@@ -51,8 +51,11 @@ if (text.includes("\n") || text.includes("\r")) {
 if (text !== text.trim()) {
   throw new Error("entry must not start or end with whitespace");
 }
-if (/[\u0000-\u001f\u007f\u2028\u2029]/.test(text)) {
-  throw new Error("entry must not contain control characters");
+// A byte-order mark or zero-width character would be read as part of the
+// line without ever being seen, and would change the entry's byte length
+// against its character count: reject them alongside the control set.
+if (/[\u0000-\u001f\u007f\u2028\u2029\ufeff\u200b-\u200d]/.test(text)) {
+  throw new Error("entry must not contain control or invisible characters");
 }
 
 mkdirSync("/output", { recursive: true });
@@ -67,6 +70,14 @@ chmodSync("/output/entry.txt", 0o644);
 const written = readFileSync("/output/entry.txt", "utf8");
 if (written !== text) {
   throw new Error("entry file does not match the gated line");
+}
+// The file must end exactly at the last character: a trailing newline
+// would make the entry two lines to a reader that counts lines, and the
+// equality check above would already have caught it — this asserts the
+// invariant on its own so a future edit that relaxes the write cannot
+// silently reintroduce it.
+if (written.endsWith("\n") || written.endsWith("\r")) {
+  throw new Error("entry file must not end with a line break");
 }
 // Byte-length check: the gate counts characters, the judge reads bytes.
 // A re-encode or stray padding that survived the string compare above
